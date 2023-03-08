@@ -1,0 +1,245 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: SAM Template for entity-extractor-app
+Parameters:
+  ApiStage:
+    Description: The name of the stage for the API (e.g. Dev/Prod/Test)
+    Default: Prod
+    Type: String
+  VpcId:
+    Description: The VPC to deploy into
+    Type: AWS::EC2::VPC::Id
+  SubnetId:
+    Description: The subnet for the Lambda to deploy into
+    Type: AWS::EC2::Subnet::Id
+
+# More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
+Globals:
+  Function:
+    Timeout: 15
+
+Resources:
+  # ---- DYNAMODB ABSTRACTION WITH SAM ---- #
+  ServerlessTable:
+    Type: AWS::Serverless::SimpleTable
+    Properties:
+      PrimaryKey:
+        Name: HashedText
+        Type: String
+        
+  # ---- SECURITY GROUPS AND NETWORKING---- #
+  SqsVpcEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      ServiceName: com.amazonaws.us-east-1.sqs
+      PrivateDnsEnabled: True
+      SubnetIds:
+        - !Ref SubnetId
+      VpcEndpointType: Interface
+      VpcId: !Ref VpcId
+      SecurityGroupIds:
+        - !Ref SqsVpcEndpointSecurityGroup
+
+  ComprehendVpcEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      ServiceName: com.amazonaws.us-east-1.comprehend
+      PrivateDnsEnabled: True
+      SubnetIds:
+        - !Ref SubnetId
+      VpcEndpointType: Interface
+      VpcId: !Ref VpcId
+      SecurityGroupIds:
+        - !Ref ComprehendVpcEndpointSecurityGroup
+
+  SqsVpcEndpointSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: A security group for the entity-extractor-app SQS VPC endpoint
+      GroupName: EntityExtractorSQSVPCESecurityGroup
+      VpcId: !Ref VpcId
+
+  ComprehendVpcEndpointSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: A security group for the entity-extractor-app Comprehend VPC endpoint
+      GroupName: EntityExtractorComprehendVPCESecurityGroup
+      VpcId: !Ref VpcId
+
+  LambdaSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: A security group for the entity-extractor-app Lambda functions
+      GroupName: EntityExtractorLambdaSecurityGroup
+      VpcId: !Ref VpcId
+
+  ElastiCacheSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: A security group for entity-extractor-app ElastiCache
+      GroupName: EntityExtractorCacheSecurityGroup
+      VpcId: !Ref VpcId
+
+  LambdaSgEgressToSqsVpce:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref LambdaSecurityGroup
+      Description: Allow egress from lambda to sqs vpce
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+      DestinationSecurityGroupId: !Ref SqsVpcEndpointSecurityGroup
+
+  LambdaSgEgressToComprehendVpce:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref LambdaSecurityGroup
+      Description: Allow egress from lambda to comprehend vpce
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+      DestinationSecurityGroupId: !Ref ComprehendVpcEndpointSecurityGroup
+
+  LambdaSgEgressToElasticache:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref LambdaSecurityGroup
+      Description: Allow egress from Lambda to elasticache
+      IpProtocol: tcp
+      FromPort: 6379
+      ToPort: 6379
+      DestinationSecurityGroupId: !Ref ElastiCacheSecurityGroup
+
+  CacheIngressFromLambdaSg:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref ElastiCacheSecurityGroup
+      Description: Grant ingress access from Lambda security group
+      SourceSecurityGroupId: !Ref LambdaSecurityGroup
+      IpProtocol: tcp
+      FromPort: 6379
+      ToPort: 6379
+
+  SqsVpceIngressFromLambdaSg:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref SqsVpcEndpointSecurityGroup
+      Description: Grant ingress access from Lambda security group
+      SourceSecurityGroupId: !Ref LambdaSecurityGroup
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+
+  ComprehendVpceIngressFromLambdaSg:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref ComprehendVpcEndpointSecurityGroup
+      Description: Grant ingress access from Lambda security group
+      SourceSecurityGroupId: !Ref LambdaSecurityGroup
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+  
+  # ---- ELASTICACHE ---- #
+  ElastiCacheCluster:
+    Type: AWS::ElastiCache::ReplicationGroup
+    Properties:
+      ReplicationGroupDescription: Replication group for entity-extractor-app cache
+      NumCacheClusters: 1
+      Engine: redis
+      CacheNodeType: cache.t3.micro
+      CacheSubnetGroupName: !Ref CacheSubnetGroup
+      AutomaticFailoverEnabled: False
+      SecurityGroupIds:
+        - !Ref ElastiCacheSecurityGroup
+      TransitEncryptionEnabled: True
+
+  CacheSubnetGroup:
+    Type: AWS::ElastiCache::SubnetGroup
+    Properties:
+      Description: Cache Subnet Group
+      SubnetIds: [!Ref SubnetId] 
+
+  # ---- SQS QUEUE ---- #
+  PopulatorQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: entity-extractor-dynamodb-populator-queue
+
+  # ---- API GATEWAY AND LAMBDA ---- #
+  ApiGatewayRestApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: entity-extractor-app-api
+      StageName: !Ref ApiStage
+
+  DynamoDbPopulator:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      Runtime: python3.9
+      CodeUri: ./dynamodb_populator
+      Handler: app.lambda_handler
+      MemorySize: 256
+      Policies:
+        - Statement:
+            - Sid: AllowPutItemToDynamoDbTable
+              Effect: Allow
+              Action:
+                - dynamodb:PutItem
+              Resource: !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ServerlessTable}
+      Environment:
+        Variables:
+          DYNAMODB_TABLE: !Ref ServerlessTable
+      Events:
+        Queue:
+          Type: SQS
+          Properties:
+            BatchSize: 10
+            Queue: !GetAtt PopulatorQueue.Arn
+
+  EntityExtractorFunction:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      Runtime: python3.9
+      CodeUri: ./entity_extractor.zip
+      Handler: app.lambda_handler
+      MemorySize: 512
+      Policies:
+        - Statement:
+            - Sid: AllowSendMessageToSqsQueue
+              Effect: Allow
+              Action:
+                - sqs:SendMessage
+              Resource: !GetAtt PopulatorQueue.Arn
+            - Sid: AllowComprehendDetectEntities
+              Effect: Allow
+              Action:
+                - comprehend:DetectEntities
+              Resource: "*"
+      Environment:
+        Variables:
+          REDIS_ENDPOINT: !GetAtt ElastiCacheCluster.PrimaryEndPoint.Address
+          QUEUE_NAME: !GetAtt PopulatorQueue.QueueName
+          REGION: !Ref AWS::Region
+          ACCOUNT_ID: !Ref AWS::AccountId
+      VpcConfig:
+        SecurityGroupIds: [!Ref LambdaSecurityGroup]
+        SubnetIds: [!Ref SubnetId]
+      Events:
+        EntityExtractor:
+          Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
+          Properties:
+            Path: /extract-entities
+            Method: POST
+            RestApiId: !Ref ApiGatewayRestApi
+
+Outputs:
+  EntityExtractorApi:
+    Description: "API Gateway endpoint URL for Prod stage for EntityExtractorFunction function"
+    Value: !Sub "https://${ApiGatewayRestApi}.execute-api.${AWS::Region}.amazonaws.com/${ApiStage}/extract-entities"
+  EntityExtractorFunction:
+    Description: "EntityExtractorFunction Lambda Function ARN"
+    Value: !GetAtt EntityExtractorFunction.Arn
+  EntityExtractorFunctionIamRole:
+    Description: "Implicit IAM Role created for EntityExtractorFunction function"
+    Value: !GetAtt EntityExtractorFunctionRole.Arn
