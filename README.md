@@ -11,4 +11,4 @@ The general gist of this application is to provide the following functionality:
   - triggered by new queue items, batching 10 at a time
   - stores the queue message contents in DynamoDB
 
-![entity_comprehend.jpg](entity_comprehend.jpg)
+![entity_comprehend.png](entity_comprehend.png)
