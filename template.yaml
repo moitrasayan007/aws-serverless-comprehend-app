@@ -167,11 +167,24 @@ Resources:
       QueueName: entity-extractor-dynamodb-populator-queue
 
   # ---- API GATEWAY AND LAMBDA ---- #
-  ApiGatewayRestApi:
-    Type: AWS::Serverless::Api
+  ApiGatewayHttpApi:
+    Type: AWS::Serverless::HttpApi
     Properties:
-      Name: entity-extractor-app-api
       StageName: !Ref ApiStage
+      Tags:
+        Name: nlp-http
+      AccessLogSettings:
+        DestinationArn: !GetAtt AccessLogs.Arn
+        Format: '{ "requestId":"$context.requestId", "ip": "$context.identity.sourceIp", "requestTime":"$context.requestTime", "httpMethod":"$context.httpMethod","routeKey":"$context.routeKey", "status":"$context.status","protocol":"$context.protocol", "integrationStatus": $context.integrationStatus, "integrationLatency": $context.integrationLatency, "responseLength":"$context.responseLength" }'
+      DefaultRouteSettings:
+        ThrottlingBurstLimit: 200
+      RouteSettings:
+        "POST /extract-entities":
+          ThrottlingBurstLimit: 500 # overridden in HttpApi Event
+      FailOnWarnings: true
+
+  AccessLogs:
+    Type: AWS::Logs::LogGroup
 
   DynamoDbPopulator:
     Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
@@ -227,16 +240,16 @@ Resources:
         SubnetIds: [!Ref SubnetId]
       Events:
         EntityExtractor:
-          Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
+          Type: HttpApi # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
           Properties:
             Path: /extract-entities
             Method: POST
-            RestApiId: !Ref ApiGatewayRestApi
+            ApiId: !Ref ApiGatewayHttpApi
 
 Outputs:
   EntityExtractorApi:
     Description: "API Gateway endpoint URL for Prod stage for EntityExtractorFunction function"
-    Value: !Sub "https://${ApiGatewayRestApi}.execute-api.${AWS::Region}.amazonaws.com/${ApiStage}/extract-entities"
+    Value: !Sub "https://${ApiGatewayHttpApi}.execute-api.execute-api.${AWS::Region}.${AWS::URLSuffix}/${ApiStage}/extract-entities"
   EntityExtractorFunction:
     Description: "EntityExtractorFunction Lambda Function ARN"
     Value: !GetAtt EntityExtractorFunction.Arn

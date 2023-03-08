@@ -1,4 +1,4 @@
-# aws-comprehend-serverless-app
+# aws-serverless-comprehend-app
 A serverless application built with AWS SAM, focused around using AWS Comprehend to perform NLP on given text.
 
 The general gist of this application is to provide the following functionality:
@@ -11,4 +11,4 @@ The general gist of this application is to provide the following functionality:
   - triggered by new queue items, batching 10 at a time
   - stores the queue message contents in DynamoDB
 
-![DIAGRAM.jpg](DIAGRAM.jpg)
+![entity_comprehend.jpg](entity_comprehend.jpg)
