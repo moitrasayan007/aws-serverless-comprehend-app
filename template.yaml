@@ -19,7 +19,7 @@ Globals:
     Timeout: 15
 
 Resources:
-  # ---- DYNAMODB ABSTRACTION WITH SAM ---- #
+  # ---- DYNAMODB PROVISIONING WITH SAM ---- #
   ServerlessTable:
     Type: AWS::Serverless::SimpleTable
     Properties:
@@ -27,11 +27,11 @@ Resources:
         Name: HashedText
         Type: String
         
-  # ---- SECURITY GROUPS AND NETWORKING---- #
+  # ---- SECURITY GROUPS AND NETWORKING ---- #
   SqsVpcEndpoint:
     Type: AWS::EC2::VPCEndpoint
     Properties:
-      ServiceName: com.amazonaws.us-east-1.sqs
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.sqs
       PrivateDnsEnabled: True
       SubnetIds:
         - !Ref SubnetId
@@ -43,7 +43,7 @@ Resources:
   ComprehendVpcEndpoint:
     Type: AWS::EC2::VPCEndpoint
     Properties:
-      ServiceName: com.amazonaws.us-east-1.comprehend
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.comprehend
       PrivateDnsEnabled: True
       SubnetIds:
         - !Ref SubnetId
@@ -140,7 +140,7 @@ Resources:
       FromPort: 443
       ToPort: 443
   
-  # ---- ELASTICACHE ---- #
+  # ---- ELASTICACHE REDIS ---- #
   ElastiCacheCluster:
     Type: AWS::ElastiCache::ReplicationGroup
     Properties:
@@ -190,7 +190,7 @@ Resources:
     Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
     Properties:
       Runtime: python3.9
-      CodeUri: ./dynamodb_populator
+      CodeUri: ./dynamodb_table
       Handler: app.lambda_handler
       MemorySize: 256
       Policies:
@@ -214,7 +214,7 @@ Resources:
     Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
     Properties:
       Runtime: python3.9
-      CodeUri: ./entity_extractor.zip
+      CodeUri: ./entity_lambda.zip
       Handler: app.lambda_handler
       MemorySize: 512
       Policies:
@@ -242,14 +242,14 @@ Resources:
         EntityExtractor:
           Type: HttpApi # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
           Properties:
-            Path: /extract-entities
+            Path: /extract-nlp-entities
             Method: POST
             ApiId: !Ref ApiGatewayHttpApi
 
 Outputs:
   EntityExtractorApi:
     Description: "API Gateway endpoint URL for Prod stage for EntityExtractorFunction function"
-    Value: !Sub "https://${ApiGatewayHttpApi}.execute-api.execute-api.${AWS::Region}.${AWS::URLSuffix}/${ApiStage}/extract-entities"
+    Value: !Sub "https://${ApiGatewayHttpApi}.execute-api.execute-api.${AWS::Region}.${AWS::URLSuffix}/${ApiStage}/extract-nlp-entities"
   EntityExtractorFunction:
     Description: "EntityExtractorFunction Lambda Function ARN"
     Value: !GetAtt EntityExtractorFunction.Arn
