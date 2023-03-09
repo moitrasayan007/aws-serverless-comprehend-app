@@ -12,3 +12,8 @@ The general gist of this application is to provide the following functionality:
   - stores the queue message contents in DynamoDB
 
 ![entity_comprehend.png](entity_comprehend.png)
+
+
+# Testing
+
+![test_image.png](test_image.png)
