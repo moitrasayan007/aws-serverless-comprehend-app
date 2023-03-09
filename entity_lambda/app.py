@@ -35,7 +35,7 @@ def lambda_handler(event, context):
     comprehend = boto3.client('comprehend', endpoint_url='https://comprehend.{}.amazonaws.com/'.format(os.environ['REGION']))
 
     if nlp_entities == None:
-        # Use spaCy to extract entities from our text
+        # Use AWS comprehend to extract entities from our text
         nlp = comprehend.detect_entities(Text = text_to_analyse, LanguageCode='en')
         nlp_entities = nlp['Entities']
         cache_hit = False
