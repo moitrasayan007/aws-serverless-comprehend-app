@@ -179,7 +179,7 @@ Resources:
       DefaultRouteSettings:
         ThrottlingBurstLimit: 200
       RouteSettings:
-        "POST /extract-entities":
+        "POST /extract-nlp-entities":
           ThrottlingBurstLimit: 500 # overridden in HttpApi Event
       FailOnWarnings: true
 
@@ -249,7 +249,7 @@ Resources:
 Outputs:
   EntityExtractorApi:
     Description: "API Gateway endpoint URL for Prod stage for EntityExtractorFunction function"
-    Value: !Sub "https://${ApiGatewayHttpApi}.execute-api.execute-api.${AWS::Region}.${AWS::URLSuffix}/${ApiStage}/extract-nlp-entities"
+    Value: !Sub "https://${ApiGatewayHttpApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/${ApiStage}/extract-nlp-entities"
   EntityExtractorFunction:
     Description: "EntityExtractorFunction Lambda Function ARN"
     Value: !GetAtt EntityExtractorFunction.Arn
